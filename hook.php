@@ -18,6 +18,8 @@ function plugin_urlwidget_install()
                     `name`       VARCHAR(255) NOT NULL DEFAULT '',
                     `url`        VARCHAR(1024) NOT NULL DEFAULT '',
                     `height`     int NOT NULL DEFAULT '300',
+                    `natural_width`  int NOT NULL DEFAULT '1200',
+                    `natural_height` int NOT NULL DEFAULT '800',
                     `date_mod`   timestamp NULL DEFAULT NULL,
                     `date_creation` timestamp NULL DEFAULT NULL,
                     PRIMARY KEY (`id`)
@@ -25,6 +27,14 @@ function plugin_urlwidget_install()
                   DEFAULT CHARSET={$default_charset}
                   COLLATE={$default_collation}";
         $DB->doQuery($query);
+    } else {
+        // Upgrading from a version that predates the natural size fields.
+        if (!$DB->fieldExists($table, 'natural_width')) {
+            $migration->addField($table, 'natural_width', 'int', ['value' => 1200, 'after' => 'height']);
+        }
+        if (!$DB->fieldExists($table, 'natural_height')) {
+            $migration->addField($table, 'natural_height', 'int', ['value' => 800, 'after' => 'natural_width']);
+        }
     }
 
     $migration->executeMigration();

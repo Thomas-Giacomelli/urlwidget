@@ -77,27 +77,51 @@ class Dashboard
      * Provider: reads the configured URL/height for a given card instance
      * and hands it to the renderer as 'data'.
      *
-     * GLPI calls this passing each value declared in the card's 'args'
-     * array as a separate positional parameter, followed by the standard
-     * dashboard $params array - NOT a nested ['args' => [...]] structure.
+     * The normal dashboard grid calls this passing each value declared in
+     * the card's 'args' array as a separate positional parameter, followed
+     * by the standard dashboard $params array. The public "embed" dashboard
+     * view, however, calls providers with the $params array alone (config_id
+     * nested under $params['args']['config_id']). We accept both shapes so
+     * the widget works identically in both contexts.
      */
-    public static function provideIframeData($config_id = 0, array $params = [])
+    public static function provideIframeData(...$raw_args)
     {
+        $config_id = 0;
+        $params    = [];
+
+        foreach ($raw_args as $arg) {
+            if (is_array($arg)) {
+                $params = $arg;
+            } elseif (is_scalar($arg) && !$config_id) {
+                $config_id = (int) $arg;
+            }
+        }
+
+        if (!$config_id && isset($params['args']['config_id'])) {
+            $config_id = (int) $params['args']['config_id'];
+        }
+
         $config = new Config();
-        $url    = '';
-        $height = 300;
-        $label  = __('Iframe / URL', 'urlwidget');
+        $url            = '';
+        $height         = 300;
+        $natural_width  = 1200;
+        $natural_height = 800;
+        $label          = __('Iframe / URL', 'urlwidget');
 
         if ($config_id && $config->getFromDB($config_id)) {
-            $url    = $config->fields['url'];
-            $height = (int) $config->fields['height'];
-            $label  = $config->fields['name'] !== '' ? $config->fields['name'] : $label;
+            $url            = $config->fields['url'];
+            $height         = (int) $config->fields['height'];
+            $natural_width  = (int) ($config->fields['natural_width'] ?? 1200);
+            $natural_height = (int) ($config->fields['natural_height'] ?? 800);
+            $label          = $config->fields['name'] !== '' ? $config->fields['name'] : $label;
         }
 
         return [
             'data'  => [
-                'url'    => $url,
-                'height' => $height,
+                'url'            => $url,
+                'height'         => $height,
+                'natural_width'  => $natural_width,
+                'natural_height' => $natural_height,
             ],
             'label' => $label,
         ];
@@ -105,6 +129,11 @@ class Dashboard
 
     /**
      * Renderer: outputs the actual <iframe> HTML shown on the dashboard grid.
+     *
+     * Metabase (and most embedded dashboards) render at a fixed layout size
+     * and don't reflow to fit a small card. Instead of shrinking the iframe
+     * (which just crops the content), we render it at its natural size and
+     * scale the whole thing down with CSS so everything stays visible.
      */
     public static function renderIframe(array $params = [])
     {
@@ -115,10 +144,12 @@ class Dashboard
         ];
         $params = array_merge($default, $params);
 
-        $url    = $params['data']['url'] ?? '';
-        $height = $params['data']['height'] ?? 300;
-        $title  = $params['title'];
-        $color  = $params['color'];
+        $url            = $params['data']['url'] ?? '';
+        $height         = $params['data']['height'] ?? 300;
+        $natural_width  = (int) ($params['data']['natural_width'] ?? 1200);
+        $natural_height = (int) ($params['data']['natural_height'] ?? 800);
+        $title          = $params['title'];
+        $color          = $params['color'];
 
         if (empty($url)) {
             return "<div class='card' style='background-color: {$color};'>"
@@ -129,9 +160,26 @@ class Dashboard
 
         $safe_url = htmlspecialchars($url, ENT_QUOTES);
 
-        $html  = "<div class='card' style='background-color: {$color}; padding:0; overflow:hidden;'>";
-        $html .= "<iframe src='{$safe_url}' loading='lazy' "
-               . "style='border:0; width:100%; height:100%; min-height:{$height}px;'></iframe>";
+        $html  = "<div class='card' style='background-color: {$color}; padding:0; overflow:hidden; min-height:{$height}px;'>";
+        $html .= "<div class='urlwidget-scale-wrap' style='width:100%; height:100%; min-height:{$height}px; overflow:hidden; position:relative;'>";
+        $html .= "<iframe src='{$safe_url}' loading='lazy' scrolling='no' "
+               . "style='border:0; width:{$natural_width}px; height:{$natural_height}px; "
+               . "transform-origin: top left; position:absolute; top:0; left:0;'></iframe>";
+        $html .= "</div>";
+        $html .= "<script>(function(){";
+        $html .= "var wrap = document.currentScript.previousElementSibling;";
+        $html .= "var iframe = wrap.querySelector('iframe');";
+        $html .= "var nw = {$natural_width}, nh = {$natural_height};";
+        $html .= "function resize(){";
+        $html .= "  var w = wrap.clientWidth || 1;";
+        $html .= "  var scale = w / nw;";
+        $html .= "  iframe.style.transform = 'scale(' + scale + ')';";
+        $html .= "  wrap.style.height = Math.round(nh * scale) + 'px';";
+        $html .= "}";
+        $html .= "if (window.ResizeObserver) { new ResizeObserver(resize).observe(wrap); }";
+        $html .= "else { window.addEventListener('resize', resize); }";
+        $html .= "resize();";
+        $html .= "})();</script>";
         $html .= "</div>";
 
         return $html;

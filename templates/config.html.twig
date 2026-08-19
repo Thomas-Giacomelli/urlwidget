@@ -1,0 +1,66 @@
+{% import "components/form/fields_macros.html.twig" as fields %}
+
+<div class="firstbloc">
+    <table class="table card-table">
+        <thead>
+            <tr>
+                <th>{{ __('Name') }}</th>
+                <th>{{ __('URL') }}</th>
+                <th>{{ __('Height (px)', 'urlwidget') }}</th>
+                {% if can_edit %}<th></th>{% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                <td>{{ row.name }}</td>
+                <td style="word-break: break-all;">{{ row.url }}</td>
+                <td>{{ row.height }}</td>
+                {% if can_edit %}
+                <td>
+                    <form method="post" action="{{ form_url }}">
+                        <input type="hidden" name="id" value="{{ row.id }}">
+                        <input type="hidden" name="_glpi_csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" name="delete" value="1" class="btn btn-sm btn-ghost-danger"
+                                onclick="return confirm('{{ __('Delete this entry?', 'urlwidget')|e('js') }}');">
+                            <i class="ti ti-trash"></i>
+                        </button>
+                    </form>
+                </td>
+                {% endif %}
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="4">{{ __('No URL configured yet.', 'urlwidget') }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if can_edit %}
+<div class="firstbloc">
+    <h3>{{ __('Add a new URL widget', 'urlwidget') }}</h3>
+    <form method="post" action="{{ form_url }}" class="row g-2">
+        <input type="hidden" name="_glpi_csrf_token" value="{{ csrf_token() }}">
+
+        <div class="col-md-3">
+            {{ fields.textField('name', '', __('Name'), {no_label: false}) }}
+        </div>
+        <div class="col-md-6">
+            {{ fields.textField('url', '', __('URL'), {no_label: false, placeholder: 'https://...'}) }}
+        </div>
+        <div class="col-md-2">
+            {{ fields.numberField('height', 300, __('Height (px)', 'urlwidget'), {no_label: false}) }}
+        </div>
+        <div class="col-md-1 d-flex align-items-end">
+            <button type="submit" name="add" value="1" class="btn btn-primary">
+                <i class="ti ti-plus"></i>
+            </button>
+        </div>
+    </form>
+    <p class="text-muted mt-2">
+        {{ __('Once added, the URL becomes available as a dashboard card named after it. Add it from any dashboard\'s "Add widget" panel, under the "Iframe / URL" widget type.', 'urlwidget') }}
+    </p>
+</div>
+{% endif %}

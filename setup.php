@@ -4,7 +4,7 @@ use Glpi\Plugin\Hooks;
 use GlpiPlugin\Urlwidget\Dashboard;
 use GlpiPlugin\Urlwidget\Config as UrlwidgetConfig;
 
-define('PLUGIN_URLWIDGET_VERSION', '1.0.3');
+define('PLUGIN_URLWIDGET_VERSION', '1.0.4');
 
 // Minimal GLPI version, inclusive
 define('PLUGIN_URLWIDGET_MIN_GLPI_VERSION', '10.0.0');
@@ -14,8 +14,6 @@ define('PLUGIN_URLWIDGET_MAX_GLPI_VERSION', '11.99.99');
 function plugin_init_urlwidget()
 {
     global $PLUGIN_HOOKS;
-
-    Toolbox::logInFile('urlwidget', "plugin_init_urlwidget() called\n");
 
     $PLUGIN_HOOKS['csrf_compliant']['urlwidget'] = true;
 
@@ -56,7 +54,7 @@ function plugin_version_urlwidget()
         'version'        => PLUGIN_URLWIDGET_VERSION,
         'author'         => 'Thomas Giacomelli',
         'license'        => 'GPLv2+',
-        'homepage'       => '',
+        'homepage'       => 'https://github.com/Thomas-Giacomelli/urlwidget',
         'requirements'   => [
             'glpi' => [
                 'min' => PLUGIN_URLWIDGET_MIN_GLPI_VERSION,

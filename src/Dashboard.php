@@ -9,8 +9,6 @@ class Dashboard
      */
     public static function getTypes($types = [])
     {
-        \Toolbox::logInFile('urlwidget', "getTypes() called\n");
-
         if (!is_array($types)) {
             $types = [];
         }
@@ -51,16 +49,11 @@ class Dashboard
             global $DB;
 
             $table = Config::getTable();
-            \Toolbox::logInFile('urlwidget', "getCards() called, table={$table}\n");
-
             if (!$DB->tableExists($table)) {
-                \Toolbox::logInFile('urlwidget', "table {$table} does not exist!\n");
                 return $cards;
             }
 
             $iterator = $DB->request(['FROM' => $table, 'ORDER' => 'name']);
-            \Toolbox::logInFile('urlwidget', "found " . count($iterator) . " row(s)\n");
-
             foreach ($iterator as $row) {
                 $key = 'urlwidget_' . $row['id'];
                 $cards[$key] = [
@@ -71,12 +64,11 @@ class Dashboard
                         'config_id' => $row['id'],
                     ],
                 ];
-                \Toolbox::logInFile('urlwidget', "added card key={$key} label={$row['name']}\n");
             }
 
             return $cards;
         } catch (\Throwable $e) {
-            \Toolbox::logInFile('urlwidget', "EXCEPTION in getCards(): " . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n");
+            \Toolbox::logInFile('urlwidget', "EXCEPTION in getCards(): " . $e->getMessage() . "\n");
             return $cards;
         }
     }
@@ -84,16 +76,13 @@ class Dashboard
     /**
      * Provider: reads the configured URL/height for a given card instance
      * and hands it to the renderer as 'data'.
+     *
+     * GLPI calls this passing each value declared in the card's 'args'
+     * array as a separate positional parameter, followed by the standard
+     * dashboard $params array - NOT a nested ['args' => [...]] structure.
      */
-    public static function provideIframeData(array $params = [])
+    public static function provideIframeData($config_id = 0, array $params = [])
     {
-        $default = [
-            'args' => [],
-        ];
-        $params = array_merge($default, $params);
-
-        $config_id = $params['args']['config_id'] ?? 0;
-
         $config = new Config();
         $url    = '';
         $height = 300;

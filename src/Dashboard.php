@@ -5,48 +5,21 @@ namespace GlpiPlugin\Urlwidget;
 class Dashboard
 {
     /**
-     * Declares the widget type available for cards (the renderer).
-     */
-    public static function getTypes($types = [])
-    {
-        if (!is_array($types)) {
-            $types = [];
-        }
-
-        // Small inline SVG icon (a monitor/frame glyph) so the widget-type
-        // picker always has something to display, even offline.
-        $icon = 'data:image/svg+xml;base64,' . base64_encode(
-            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 86" width="100" height="86">'
-            . '<rect x="4" y="4" width="92" height="60" rx="4" fill="none" stroke="#6c7a89" stroke-width="4"/>'
-            . '<line x1="4" y1="20" x2="96" y2="20" stroke="#6c7a89" stroke-width="4"/>'
-            . '<circle cx="12" cy="12" r="2.5" fill="#6c7a89"/>'
-            . '<circle cx="20" cy="12" r="2.5" fill="#6c7a89"/>'
-            . '<circle cx="28" cy="12" r="2.5" fill="#6c7a89"/>'
-            . '<line x1="50" y1="64" x2="50" y2="76" stroke="#6c7a89" stroke-width="4"/>'
-            . '<line x1="30" y1="82" x2="70" y2="82" stroke="#6c7a89" stroke-width="4"/>'
-            . '</svg>'
-        );
-
-        $types['urlwidget_iframe'] = [
-            'label'    => __('Iframe / URL', 'urlwidget'),
-            'function' => __CLASS__ . '::renderIframe',
-            'image'    => $icon,
-        ];
-
-        return $types;
-    }
-
-    /**
-     * Declares one dashboard card per configured URL (dynamic, from DB).
+     * Declares one dashboard card per configured Metabase question (dynamic,
+     * from DB).
+     *
+     * Unlike the previous iframe-based approach, this uses GLPI's own core
+     * "bigNumber" widget type - the same one used for native counters
+     * (number of computers, tickets, etc.). Because it's a built-in type,
+     * GLPI already knows how to render it everywhere, including the public
+     * "embed" dashboard view, without us having to declare or maintain a
+     * custom widget type/renderer at all.
      *
      * The row id is embedded directly in the provider's *method name*
-     * (provideIframeData_<id>) instead of being passed through a card
-     * 'args' array. GLPI's dashboard grid and its public "embed" view do
-     * not call providers the same way (positional args vs a single $params
-     * array), which made a param-based approach fragile. Encoding the id in
-     * the callable string sidesteps that entirely: whatever arguments GLPI
-     * does or doesn't pass, __callStatic() below extracts the id from the
-     * method name itself.
+     * (provideBigNumber_<id>) rather than passed as a runtime argument,
+     * since the normal dashboard grid and the embed view do not call
+     * providers the same way. __callStatic() below extracts the id from
+     * the method name itself, regardless of what arguments GLPI passes.
      */
     public static function getCards($cards = [])
     {
@@ -66,9 +39,9 @@ class Dashboard
             foreach ($iterator as $row) {
                 $key = 'urlwidget_' . $row['id'];
                 $cards[$key] = [
-                    'widgettype' => ['urlwidget_iframe'],
-                    'label'      => $row['name'] !== '' ? $row['name'] : __('Iframe / URL', 'urlwidget'),
-                    'provider'   => __CLASS__ . '::provideIframeData_' . (int) $row['id'],
+                    'widgettype' => ['bigNumber'],
+                    'label'      => $row['name'] !== '' ? $row['name'] : __('Metabase question', 'urlwidget'),
+                    'provider'   => __CLASS__ . '::provideBigNumber_' . (int) $row['id'],
                 ];
             }
 
@@ -80,114 +53,160 @@ class Dashboard
     }
 
     /**
-     * Catches calls to provideIframeData_<id>(...) regardless of what
+     * Catches calls to provideBigNumber_<id>(...) regardless of what
      * arguments GLPI passed (or didn't), and dispatches to the real logic
      * with the id parsed straight out of the method name.
      */
     public static function __callStatic($name, $arguments)
     {
-        if (preg_match('/^provideIframeData_(\d+)$/', $name, $m)) {
-            return self::buildIframeData((int) $m[1]);
+        if (preg_match('/^provideBigNumber_(\d+)$/', $name, $m)) {
+            return self::buildBigNumberData((int) $m[1]);
         }
 
         \Toolbox::logInFile('urlwidget', "__callStatic() unknown method: {$name}\n");
         return [
-            'data'  => [],
-            'label' => __('Iframe / URL', 'urlwidget'),
-        ];
-    }
-
-    private static function buildIframeData(int $config_id)
-    {
-        $config         = new Config();
-        $url            = '';
-        $height         = 300;
-        $natural_width  = 1200;
-        $natural_height = 800;
-        $label          = __('Iframe / URL', 'urlwidget');
-
-        $found = $config_id ? $config->getFromDB($config_id) : false;
-
-        \Toolbox::logInFile(
-            'urlwidget',
-            "buildIframeData(config_id={$config_id}) found=" . var_export($found, true) . "\n"
-        );
-
-        if ($found) {
-            $url            = $config->fields['url'];
-            $height         = (int) $config->fields['height'];
-            $natural_width  = (int) ($config->fields['natural_width'] ?? 1200);
-            $natural_height = (int) ($config->fields['natural_height'] ?? 800);
-            $label          = $config->fields['name'] !== '' ? $config->fields['name'] : $label;
-        }
-
-        return [
-            'data'  => [
-                'url'            => $url,
-                'height'         => $height,
-                'natural_width'  => $natural_width,
-                'natural_height' => $natural_height,
-            ],
-            'label' => $label,
+            'number' => 0,
+            'label'  => __('Metabase question', 'urlwidget'),
         ];
     }
 
     /**
-     * Renderer: outputs the actual <iframe> HTML shown on the dashboard grid.
-     *
-     * GLPI already wraps every card in its own container (title bar, drag
-     * handle, borders, background) - core widgets only ever return their
-     * *inner* content. Our first version additionally wrapped its output in
-     * a second '<div class="card">', which fought with GLPI's own chrome
-     * and made the card look broken/oversized. This version returns only
-     * the inner content, filling whatever space GLPI's own card provides.
-     *
-     * Metabase (and most embedded dashboards) render at a fixed layout size
-     * and don't reflow to fit a small card. Instead of shrinking the iframe
-     * (which just crops the content), we render it at its natural size and
-     * scale the whole thing down with CSS so everything stays visible.
+     * Builds the ['number' => ..., 'label' => ..., 'url' => ..., 'icon' => ...]
+     * payload expected by GLPI's core "bigNumber" widget, using the live
+     * value fetched from Metabase's public JSON endpoint.
      */
-    public static function renderIframe(array $params = [])
+    private static function buildBigNumberData(int $config_id)
     {
-        $default = [
-            'data'  => [],
-            'title' => '',
-        ];
-        $params = array_merge($default, $params);
+        $config = new Config();
+        $number = 0;
+        $label  = __('Metabase question', 'urlwidget');
+        $url    = '';
 
-        $url            = $params['data']['url'] ?? '';
-        $natural_width  = (int) ($params['data']['natural_width'] ?? 1200);
-        $natural_height = (int) ($params['data']['natural_height'] ?? 800);
-        $title          = $params['title'];
+        $found = $config_id ? $config->getFromDB($config_id) : false;
+        \Toolbox::logInFile('urlwidget', "buildBigNumberData(config_id={$config_id}) found=" . var_export($found, true) . "\n");
 
-        if (empty($url)) {
-            return "<div class='empty-card'>"
-                . "<p>" . __('No URL configured for this widget.', 'urlwidget') . "</p>"
-                . "</div>";
+        if ($found) {
+            $url    = $config->fields['url'];
+            $label  = $config->fields['name'] !== '' ? $config->fields['name'] : $label;
+
+            $fetched = self::fetchMetabaseValue($url);
+
+            if ($fetched['error'] !== null) {
+                \Toolbox::logInFile(
+                    'urlwidget',
+                    "buildBigNumberData(config_id={$config_id}) fetch error: {$fetched['error']}\n"
+                );
+            } else {
+                $number = $fetched['number'];
+                // Prefer Metabase's own column label when we don't have a
+                // more friendly admin-provided name.
+                if ($config->fields['name'] === '' && $fetched['label'] !== '') {
+                    $label = $fetched['label'];
+                }
+                \Toolbox::logInFile(
+                    'urlwidget',
+                    "buildBigNumberData(config_id={$config_id}) number={$number} label={$label}\n"
+                );
+            }
         }
 
-        $safe_url = htmlspecialchars($url, ENT_QUOTES);
+        return [
+            'number' => $number,
+            'label'  => $label,
+            'url'    => $url,
+            'icon'   => 'ti ti-phone',
+        ];
+    }
 
-        $html  = "<div class='urlwidget-scale-wrap' style='width:100%; height:100%; overflow:hidden; position:relative;'>";
-        $html .= "<iframe src='{$safe_url}' title='" . htmlspecialchars($title, ENT_QUOTES) . "' loading='lazy' scrolling='no' "
-               . "style='border:0; width:{$natural_width}px; height:{$natural_height}px; "
-               . "transform-origin: top left; position:absolute; top:0; left:0;'></iframe>";
-        $html .= "</div>";
-        $html .= "<script>(function(){";
-        $html .= "var wrap = document.currentScript.previousElementSibling;";
-        $html .= "var iframe = wrap.querySelector('iframe');";
-        $html .= "var nw = {$natural_width}, nh = {$natural_height};";
-        $html .= "function resize(){";
-        $html .= "  var w = wrap.clientWidth || 1;";
-        $html .= "  var scale = w / nw;";
-        $html .= "  iframe.style.transform = 'scale(' + scale + ')';";
-        $html .= "  wrap.style.height = Math.round(nh * scale) + 'px';";
-        $html .= "}";
-        $html .= "if (window.ResizeObserver) { new ResizeObserver(resize).observe(wrap); }";
-        $html .= "else { window.addEventListener('resize', resize); }";
-        $html .= "resize();";
-        $html .= "})();</script>";
+    /**
+     * Fetches a Metabase public question as raw JSON (public link + ".json")
+     * and extracts the first column of the first row - the expected shape
+     * for a single-value question like `SELECT COUNT(*) AS ... FROM ...`.
+     *
+     * Returns ['number' => mixed, 'label' => string, 'error' => ?string].
+     */
+    private static function fetchMetabaseValue(string $public_url): array
+    {
+        $result = ['number' => 0, 'label' => '', 'error' => null];
 
-        return $html;
+        if (empty($public_url)) {
+            $result['error'] = 'no URL configured';
+            return $result;
+        }
+
+        $json_url = self::toJsonUrl($public_url);
+
+        if (!function_exists('curl_init')) {
+            $result['error'] = 'curl extension not available';
+            return $result;
+        }
+
+        try {
+            $ch = curl_init($json_url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 8,
+                CURLOPT_HTTPHEADER     => ['Accept: application/json'],
+            ]);
+            $body      = curl_exec($ch);
+            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curl_err  = curl_error($ch);
+            curl_close($ch);
+
+            \Toolbox::logInFile(
+                'urlwidget',
+                "fetchMetabaseValue GET {$json_url} => HTTP {$http_code}" . ($curl_err !== '' ? " curl_error={$curl_err}" : '') . "\n"
+            );
+
+            if ($body === false || $http_code >= 400) {
+                $result['error'] = "HTTP {$http_code}" . ($curl_err !== '' ? " ({$curl_err})" : '');
+                return $result;
+            }
+
+            $data = json_decode($body, true);
+
+            if (!is_array($data) || count($data) === 0) {
+                $result['error'] = 'empty or non-JSON response - is this a public Metabase question link?';
+                return $result;
+            }
+
+            $first_row = $data[0];
+            if (!is_array($first_row) || count($first_row) === 0) {
+                $result['error'] = 'no columns in first result row';
+                return $result;
+            }
+
+            $key   = array_key_first($first_row);
+            $value = $first_row[$key];
+
+            $result['number'] = is_numeric($value) ? ($value + 0) : $value;
+            $result['label']  = ucwords(str_replace(['_', '-'], ' ', (string) $key));
+        } catch (\Throwable $e) {
+            $result['error'] = $e->getMessage();
+        }
+
+        return $result;
+    }
+
+    /**
+     * Turns a Metabase public question URL (e.g.
+     * https://host/public/question/<uuid>?titled=false) into its raw JSON
+     * export URL (https://host/public/question/<uuid>.json).
+     */
+    private static function toJsonUrl(string $url): string
+    {
+        $parts = parse_url($url);
+
+        $base = ($parts['scheme'] ?? 'https') . '://' . ($parts['host'] ?? '');
+        if (isset($parts['port'])) {
+            $base .= ':' . $parts['port'];
+        }
+        $base .= $parts['path'] ?? '';
+
+        if (!str_ends_with($base, '.json')) {
+            $base .= '.json';
+        }
+
+        return $base;
     }
 }

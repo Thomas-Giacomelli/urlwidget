@@ -5,9 +5,7 @@
         <thead>
             <tr>
                 <th>{{ __('Name') }}</th>
-                <th>{{ __('URL') }}</th>
-                <th>{{ __('Min. height (px)', 'urlwidget') }}</th>
-                <th>{{ __('Content width x height (px)', 'urlwidget') }}</th>
+                <th>{{ __('Metabase public question URL', 'urlwidget') }}</th>
                 {% if can_edit %}<th></th>{% endif %}
             </tr>
         </thead>
@@ -16,8 +14,6 @@
             <tr>
                 <td>{{ row.name }}</td>
                 <td style="word-break: break-all;">{{ row.url }}</td>
-                <td>{{ row.height }}</td>
-                <td>{{ row.natural_width }} x {{ row.natural_height }}</td>
                 {% if can_edit %}
                 <td>
                     <form method="post" action="{{ form_url }}">
@@ -33,7 +29,7 @@
             </tr>
             {% else %}
             <tr>
-                <td colspan="5">{{ __('No URL configured yet.', 'urlwidget') }}</td>
+                <td colspan="3">{{ __('No question configured yet.', 'urlwidget') }}</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -42,21 +38,15 @@
 
 {% if can_edit %}
 <div class="firstbloc">
-    <h3>{{ __('Add a new URL widget', 'urlwidget') }}</h3>
+    <h3>{{ __('Add a new Metabase question widget', 'urlwidget') }}</h3>
     <form method="post" action="{{ form_url }}" class="row g-2">
         <input type="hidden" name="_glpi_csrf_token" value="{{ csrf_token() }}">
 
-        <div class="col-md-3">
+        <div class="col-md-4">
             {{ fields.textField('name', '', __('Name'), {no_label: false}) }}
         </div>
-        <div class="col-md-4">
-            {{ fields.textField('url', '', __('URL'), {no_label: false, placeholder: 'https://...'}) }}
-        </div>
-        <div class="col-md-2">
-            {{ fields.numberField('natural_width', 1200, __('Content width (px)', 'urlwidget'), {no_label: false}) }}
-        </div>
-        <div class="col-md-2">
-            {{ fields.numberField('natural_height', 800, __('Content height (px)', 'urlwidget'), {no_label: false}) }}
+        <div class="col-md-7">
+            {{ fields.textField('url', '', __('Metabase public question URL', 'urlwidget'), {no_label: false, placeholder: 'https://your-metabase/public/question/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'}) }}
         </div>
         <div class="col-md-1 d-flex align-items-end">
             <button type="submit" name="add" value="1" class="btn btn-primary">
@@ -65,11 +55,10 @@
         </div>
     </form>
     <p class="text-muted mt-2">
-        {{ __('"Content width/height" is the real, natural size of the embedded page (e.g. your Metabase dashboard\'s actual layout size). The widget is rendered at that size then scaled down automatically to fit the card, so nothing gets cropped.', 'urlwidget') }}
+        {{ __('Paste the public link of a Metabase question that returns a single value (e.g. "SELECT COUNT(*) AS ... FROM ..."). The plugin fetches its raw JSON export (the same link with ".json" appended) and displays the result as a native GLPI "Big number" widget, so it renders identically everywhere - including public embedded dashboards.', 'urlwidget') }}
     </p>
     <p class="text-muted mt-2">
-        {{ __('Once added, the URL becomes available as a dashboard card named after it. Add it from any dashboard\'s "Add widget" panel, under the "Iframe / URL" widget type.', 'urlwidget') }}
+        {{ __('Once added, it becomes available as a dashboard card named after it. Add it from any dashboard\'s "Add widget" panel by picking this card, then choosing the "Big number" visualization.', 'urlwidget') }}
     </p>
 </div>
 {% endif %}
-

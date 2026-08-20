@@ -1,9 +1,15 @@
 # URL Widget pour GLPI 11
 
-Mini-plugin ajoutant un type de widget "Iframe / URL" utilisable dans les
-tableaux de bord (dashboards) natifs de GLPI. Permet d'embarquer n'importe
-quelle URL (ex: une question Metabase publiée en lien public) comme carte
-de dashboard.
+Mini-plugin qui affiche le résultat d'une question Metabase (publiée en
+lien public) comme un widget "Grand nombre" natif de GLPI, dans n'importe
+quel tableau de bord (dashboard) — y compris les dashboards partagés en
+mode "embed" (iframe public).
+
+Plutôt que d'embarquer un iframe Metabase complet (peu fiable en mode
+embed et difficile à redimensionner), le plugin va chercher directement
+la valeur brute via l'export JSON public de la question Metabase, et
+l'affiche avec le rendu natif GLPI (même style que "nombre
+d'ordinateurs", "tickets ouverts", etc.).
 
 ## Installation
 
@@ -19,27 +25,42 @@ de dashboard.
 
 ## Configuration
 
-1. Aller dans **Configuration > Générale**, onglet **Widgets URL**.
-2. Renseigner un nom (ex: "DECT en stock"), l'URL (ex: le lien public
-   Metabase de votre question, avec `?titled=false` en suffixe si vous
-   voulez masquer le titre Metabase), et une hauteur en pixels.
-3. Cliquer sur le bouton "+" pour l'ajouter.
+1. Dans Metabase, ouvrez votre question (par exemple `SELECT COUNT(*) AS
+   nb_dect_en_stock FROM ...`), publiez-la en **lien public**.
+2. Dans GLPI, aller dans **Configuration > Générale**, onglet
+   **Widgets URL**.
+3. Renseigner un nom (ex: "DECT en stock") et coller le lien public
+   Metabase de la question.
+4. Cliquer sur le bouton "+" pour l'ajouter.
+
+Le plugin transforme automatiquement ce lien en export JSON (en ajoutant
+`.json` à la fin) pour aller chercher la valeur à chaque affichage du
+widget.
 
 ## Utilisation
 
 1. Aller sur le dashboard voulu (page Centrale, Assets, etc.).
 2. Passer en mode édition (icône crayon).
 3. Ajouter un widget, choisir la carte portant le nom que vous avez donné
-   à l'étape précédente (elle apparaît dans la liste des cartes
-   disponibles, catégorie widget "Iframe / URL").
-4. Enregistrer.
+   à l'étape précédente.
+4. Choisir la visualisation **"Grand nombre"** (elle est proposée
+   automatiquement, c'est le seul type compatible pour cette carte).
+5. Enregistrer.
+
+Ce même widget fonctionne aussi sur les dashboards exportés en "embed"
+(lien public intégrable dans une page HTML), puisqu'il s'agit d'un type
+de widget natif GLPI.
 
 ## Limites connues
 
+- La question Metabase doit renvoyer une seule ligne avec une seule
+  colonne (typiquement un `COUNT(*)`). Si elle renvoie plusieurs
+  colonnes/lignes, seule la première valeur de la première ligne est
+  utilisée.
 - Éditer une entrée existante n'est pas possible depuis l'interface :
   il faut la supprimer et la recréer.
-- Le contenu de l'iframe distant doit accepter d'être affiché dans une
-  frame (pas de header `X-Frame-Options: DENY` côté serveur distant) et
-  être accessible en HTTPS sans authentification (lien public Metabase).
-- Aucune vérification n'est faite sur l'URL saisie : ne collez que des
-  liens de confiance.
+- Le lien Metabase doit être un **lien public** (pas besoin
+  d'authentification) et son export JSON doit être accessible depuis le
+  serveur GLPI (pas seulement depuis le navigateur de l'utilisateur).
+- Aucune mise en cache : la question Metabase est réinterrogée à chaque
+  affichage du widget.

@@ -147,15 +147,18 @@ class Dashboard
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_TIMEOUT        => 8,
                 CURLOPT_HTTPHEADER     => ['Accept: application/json'],
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS      => 5,
             ]);
-            $body      = curl_exec($ch);
-            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $curl_err  = curl_error($ch);
+            $body       = curl_exec($ch);
+            $http_code  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $effective  = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+            $curl_err   = curl_error($ch);
             curl_close($ch);
 
             \Toolbox::logInFile(
                 'urlwidget',
-                "fetchMetabaseValue GET {$json_url} => HTTP {$http_code}" . ($curl_err !== '' ? " curl_error={$curl_err}" : '') . "\n"
+                "fetchMetabaseValue GET {$json_url} => HTTP {$http_code} (effective_url={$effective})" . ($curl_err !== '' ? " curl_error={$curl_err}" : '') . "\n"
             );
 
             if ($body === false || $http_code >= 400) {

@@ -4,7 +4,7 @@ use Glpi\Plugin\Hooks;
 use GlpiPlugin\Urlwidget\Dashboard;
 use GlpiPlugin\Urlwidget\Config as UrlwidgetConfig;
 
-define('PLUGIN_URLWIDGET_VERSION', '1.1.3');
+define('PLUGIN_URLWIDGET_VERSION', '1.1.4');
 
 // Minimal GLPI version, inclusive
 define('PLUGIN_URLWIDGET_MIN_GLPI_VERSION', '10.0.0');

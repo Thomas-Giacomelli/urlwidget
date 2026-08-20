@@ -9,16 +9,14 @@ Session::checkRight('config', UPDATE);
 $config = new Config();
 
 if (isset($_POST['add'])) {
-    $natural_height = (int) ($_POST['natural_height'] ?? 800);
-
     $config->add([
-        'name'           => $_POST['name'] ?? '',
-        'url'            => $_POST['url'] ?? '',
-        'natural_width'  => (int) ($_POST['natural_width'] ?? 1200),
-        'natural_height' => $natural_height,
-        // Reasonable default so the card isn't collapsed before the
-        // scaling script runs (it will resize itself immediately after).
-        'height'         => min(300, $natural_height),
+        'name'          => $_POST['name'] ?? '',
+        'url'           => $_POST['url'] ?? '',
+        'value_path'    => $_POST['value_path'] ?? '',
+        'value_prefix'  => $_POST['value_prefix'] ?? '',
+        'value_suffix'  => $_POST['value_suffix'] ?? '',
+        'cache_ttl'     => (int) ($_POST['cache_ttl'] ?? 300),
+        'verify_ssl'    => isset($_POST['verify_ssl']) ? 1 : 0,
     ]);
     Html::back();
 } elseif (isset($_POST['delete'])) {

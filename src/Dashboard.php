@@ -2,40 +2,17 @@
 
 namespace GlpiPlugin\Urlwidget;
 
+/**
+ * Bridges our plugin data (Config itemtype) with GLPI's native dashboard
+ * system (Glpi\Dashboard\Grid).
+ *
+ * Cards use GLPI's own "bigNumber" widget type (the same one used by
+ * built-in cards like "Number of tickets") instead of a custom renderer.
+ * This guarantees the card looks and behaves exactly like a native GLPI
+ * card, and removes any need to maintain our own markup/CSS.
+ */
 class Dashboard
 {
-    /**
-     * Declares the widget type available for cards (the renderer).
-     */
-    public static function getTypes($types = [])
-    {
-        if (!is_array($types)) {
-            $types = [];
-        }
-
-        // Small inline SVG icon (a monitor/frame glyph) so the widget-type
-        // picker always has something to display, even offline.
-        $icon = 'data:image/svg+xml;base64,' . base64_encode(
-            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 86" width="100" height="86">'
-            . '<rect x="4" y="4" width="92" height="60" rx="4" fill="none" stroke="#6c7a89" stroke-width="4"/>'
-            . '<line x1="4" y1="20" x2="96" y2="20" stroke="#6c7a89" stroke-width="4"/>'
-            . '<circle cx="12" cy="12" r="2.5" fill="#6c7a89"/>'
-            . '<circle cx="20" cy="12" r="2.5" fill="#6c7a89"/>'
-            . '<circle cx="28" cy="12" r="2.5" fill="#6c7a89"/>'
-            . '<line x1="50" y1="64" x2="50" y2="76" stroke="#6c7a89" stroke-width="4"/>'
-            . '<line x1="30" y1="82" x2="70" y2="82" stroke="#6c7a89" stroke-width="4"/>'
-            . '</svg>'
-        );
-
-        $types['urlwidget_iframe'] = [
-            'label'    => __('Iframe / URL', 'urlwidget'),
-            'function' => __CLASS__ . '::renderIframe',
-            'image'    => $icon,
-        ];
-
-        return $types;
-    }
-
     /**
      * Declares one dashboard card per configured URL (dynamic, from DB).
      */
@@ -56,13 +33,26 @@ class Dashboard
             $iterator = $DB->request(['FROM' => $table, 'ORDER' => 'name']);
             foreach ($iterator as $row) {
                 $key = 'urlwidget_' . $row['id'];
+
                 $cards[$key] = [
-                    'widgettype' => ['urlwidget_iframe'],
-                    'label'      => $row['name'] !== '' ? $row['name'] : __('Iframe / URL', 'urlwidget'),
-                    'provider'   => __CLASS__ . '::provideIframeData',
-                    'args'       => [
-                        'config_id' => $row['id'],
-                    ],
+                    'widgettype' => ['bigNumber'],
+                    'label'      => $row['name'] !== '' ? $row['name'] : __('URL Widget', 'urlwidget'),
+                    // The configuration row is captured directly in the
+                    // closure (instead of being looked up from arguments
+                    // passed by the dashboard grid at render time). This
+                    // is deliberate: GLPI does not call providers the same
+                    // way in every context (normal dashboard, ajax
+                    // refresh, and public "embed" links all forward
+                    // arguments slightly differently), which previously
+                    // caused the embedded/public dashboard to lose track
+                    // of which URL a card belonged to and fall back to
+                    // "No URL configured". Since the row is already known
+                    // here, the provider below never needs to resolve it
+                    // from anything the grid passes in, so it behaves
+                    // identically everywhere.
+                    'provider'   => function (...$ignored_grid_args) use ($row) {
+                        return self::provideData($row);
+                    },
                 ];
             }
 
@@ -74,114 +64,138 @@ class Dashboard
     }
 
     /**
-     * Provider: reads the configured URL/height for a given card instance
-     * and hands it to the renderer as 'data'.
-     *
-     * The normal dashboard grid calls this passing each value declared in
-     * the card's 'args' array as a separate positional parameter, followed
-     * by the standard dashboard $params array. The public "embed" dashboard
-     * view, however, calls providers with the $params array alone (config_id
-     * nested under $params['args']['config_id']). We accept both shapes so
-     * the widget works identically in both contexts.
+     * Data provider for GLPI's native "bigNumber" widget: a big value plus
+     * a label, exactly like the built-in dashboard cards.
      */
-    public static function provideIframeData(...$raw_args)
+    public static function provideData(array $row)
     {
-        $config_id = 0;
-        $params    = [];
-
-        foreach ($raw_args as $arg) {
-            if (is_array($arg)) {
-                $params = $arg;
-            } elseif (is_scalar($arg) && !$config_id) {
-                $config_id = (int) $arg;
-            }
-        }
-
-        if (!$config_id && isset($params['args']['config_id'])) {
-            $config_id = (int) $params['args']['config_id'];
-        }
-
-        $config = new Config();
-        $url            = '';
-        $height         = 300;
-        $natural_width  = 1200;
-        $natural_height = 800;
-        $label          = __('Iframe / URL', 'urlwidget');
-
-        if ($config_id && $config->getFromDB($config_id)) {
-            $url            = $config->fields['url'];
-            $height         = (int) $config->fields['height'];
-            $natural_width  = (int) ($config->fields['natural_width'] ?? 1200);
-            $natural_height = (int) ($config->fields['natural_height'] ?? 800);
-            $label          = $config->fields['name'] !== '' ? $config->fields['name'] : $label;
-        }
+        $label = $row['name'] !== '' ? $row['name'] : __('URL Widget', 'urlwidget');
 
         return [
-            'data'  => [
-                'url'            => $url,
-                'height'         => $height,
-                'natural_width'  => $natural_width,
-                'natural_height' => $natural_height,
-            ],
-            'label' => $label,
+            'number' => self::getValue($row),
+            'label'  => $label,
         ];
     }
 
     /**
-     * Renderer: outputs the actual <iframe> HTML shown on the dashboard grid.
-     *
-     * Metabase (and most embedded dashboards) render at a fixed layout size
-     * and don't reflow to fit a small card. Instead of shrinking the iframe
-     * (which just crops the content), we render it at its natural size and
-     * scale the whole thing down with CSS so everything stays visible.
+     * Returns the value to display, refreshing it from the configured URL
+     * only when the cache has expired (avoids calling the remote URL on
+     * every single dashboard render).
      */
-    public static function renderIframe(array $params = [])
+    private static function getValue(array $row)
     {
-        $default = [
-            'data'  => [],
-            'title' => '',
-            'color' => '',
-        ];
-        $params = array_merge($default, $params);
+        $now       = time();
+        $ttl       = max(0, (int) ($row['cache_ttl'] ?? 300));
+        $cached_at = !empty($row['cached_at']) ? strtotime($row['cached_at']) : 0;
+        $raw       = $row['cached_value'] ?? '';
 
-        $url            = $params['data']['url'] ?? '';
-        $height         = $params['data']['height'] ?? 300;
-        $natural_width  = (int) ($params['data']['natural_width'] ?? 1200);
-        $natural_height = (int) ($params['data']['natural_height'] ?? 800);
-        $title          = $params['title'];
-        $color          = $params['color'];
+        $needs_refresh = !empty($row['url']) && (($now - $cached_at) >= $ttl);
 
-        if (empty($url)) {
-            return "<div class='card' style='background-color: {$color};'>"
-                . "<span class='card-title'>" . htmlspecialchars($title) . "</span>"
-                . "<p>" . __('No URL configured for this widget.', 'urlwidget') . "</p>"
-                . "</div>";
+        if ($needs_refresh) {
+            $fetched = self::fetchValue($row);
+
+            if ($fetched !== null) {
+                $raw = $fetched;
+
+                // Persist the freshly fetched value so the next render
+                // (within the cache TTL, including on other users'
+                // dashboards or the public embed link) reuses it instead
+                // of calling the remote URL again.
+                $config = new Config();
+                $config->update([
+                    'id'           => $row['id'],
+                    'cached_value' => $raw,
+                    'cached_at'    => date('Y-m-d H:i:s', $now),
+                ]);
+            }
         }
 
-        $safe_url = htmlspecialchars($url, ENT_QUOTES);
+        $prefix = $row['value_prefix'] ?? '';
+        $suffix = $row['value_suffix'] ?? '';
 
-        $html  = "<div class='card' style='background-color: {$color}; padding:0; overflow:hidden; min-height:{$height}px;'>";
-        $html .= "<div class='urlwidget-scale-wrap' style='width:100%; height:100%; min-height:{$height}px; overflow:hidden; position:relative;'>";
-        $html .= "<iframe src='{$safe_url}' loading='lazy' scrolling='no' "
-               . "style='border:0; width:{$natural_width}px; height:{$natural_height}px; "
-               . "transform-origin: top left; position:absolute; top:0; left:0;'></iframe>";
-        $html .= "</div>";
-        $html .= "<script>(function(){";
-        $html .= "var wrap = document.currentScript.previousElementSibling;";
-        $html .= "var iframe = wrap.querySelector('iframe');";
-        $html .= "var nw = {$natural_width}, nh = {$natural_height};";
-        $html .= "function resize(){";
-        $html .= "  var w = wrap.clientWidth || 1;";
-        $html .= "  var scale = w / nw;";
-        $html .= "  iframe.style.transform = 'scale(' + scale + ')';";
-        $html .= "  wrap.style.height = Math.round(nh * scale) + 'px';";
-        $html .= "}";
-        $html .= "if (window.ResizeObserver) { new ResizeObserver(resize).observe(wrap); }";
-        $html .= "else { window.addEventListener('resize', resize); }";
-        $html .= "resize();";
-        $html .= "})();</script>";
-        $html .= "</div>";
+        if ($prefix === '' && $suffix === '' && $raw !== '' && is_numeric($raw)) {
+            // Pure number: let GLPI format it natively (thousands
+            // separators, etc.) exactly like other big-number cards.
+            return $raw + 0;
+        }
 
-        return $html;
+        $text = trim($prefix . $raw . $suffix);
+
+        return $text !== '' ? $text : __('No data', 'urlwidget');
+    }
+
+    /**
+     * Performs the HTTP GET call to the configured URL and extracts the
+     * value to display (see extractValue()).
+     */
+    private static function fetchValue(array $row)
+    {
+        if (empty($row['url'])) {
+            return null;
+        }
+
+        $ch = curl_init();
+
+        curl_setopt_array($ch, [
+            CURLOPT_URL            => $row['url'],
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 8,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_SSL_VERIFYPEER => !empty($row['verify_ssl']),
+            CURLOPT_SSL_VERIFYHOST => !empty($row['verify_ssl']) ? 2 : 0,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS      => 3,
+        ]);
+
+        $body      = curl_exec($ch);
+        $errno     = curl_errno($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($errno !== 0 || $body === false || $http_code >= 400) {
+            \Toolbox::logInFile(
+                'urlwidget',
+                sprintf(
+                    "Erreur lors de l'appel de %s (HTTP %s, curl errno %s)\n",
+                    $row['url'],
+                    $http_code,
+                    $errno
+                )
+            );
+            return null;
+        }
+
+        return self::extractValue((string) $body, (string) ($row['value_path'] ?? ''));
+    }
+
+    /**
+     * Extracts a scalar TEXT value from a raw HTTP response body:
+     * - If the body is valid JSON, walks the given dot-notation path
+     *   (e.g. "data.rows.0.0" for a Metabase public question result).
+     * - Otherwise, strips any HTML tags and returns the trimmed text, so
+     *   the card never ends up displaying raw markup.
+     */
+    private static function extractValue(string $body, string $path)
+    {
+        $decoded = json_decode($body, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return trim(strip_tags($body));
+        }
+
+        if ($path === '') {
+            return is_scalar($decoded) ? (string) $decoded : json_encode($decoded);
+        }
+
+        $value = $decoded;
+        foreach (explode('.', $path) as $key) {
+            if (is_array($value) && array_key_exists($key, $value)) {
+                $value = $value[$key];
+            } else {
+                return '';
+            }
+        }
+
+        return is_scalar($value) ? (string) $value : json_encode($value);
     }
 }

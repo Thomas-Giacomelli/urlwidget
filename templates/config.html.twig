@@ -6,8 +6,9 @@
             <tr>
                 <th>{{ __('Name') }}</th>
                 <th>{{ __('URL') }}</th>
-                <th>{{ __('Min. height (px)', 'urlwidget') }}</th>
-                <th>{{ __('Content width x height (px)', 'urlwidget') }}</th>
+                <th>{{ __('JSON path', 'urlwidget') }}</th>
+                <th>{{ __('Last value', 'urlwidget') }}</th>
+                <th>{{ __('Cache (s)', 'urlwidget') }}</th>
                 {% if can_edit %}<th></th>{% endif %}
             </tr>
         </thead>
@@ -16,8 +17,12 @@
             <tr>
                 <td>{{ row.name }}</td>
                 <td style="word-break: break-all;">{{ row.url }}</td>
-                <td>{{ row.height }}</td>
-                <td>{{ row.natural_width }} x {{ row.natural_height }}</td>
+                <td>{{ row.value_path }}</td>
+                <td>
+                    {{ row.value_prefix }}{{ row.cached_value }}{{ row.value_suffix }}
+                    {% if row.cached_at %}<br><small class="text-muted">{{ row.cached_at }}</small>{% endif %}
+                </td>
+                <td>{{ row.cache_ttl }}</td>
                 {% if can_edit %}
                 <td>
                     <form method="post" action="{{ form_url }}">
@@ -33,7 +38,7 @@
             </tr>
             {% else %}
             <tr>
-                <td colspan="5">{{ __('No URL configured yet.', 'urlwidget') }}</td>
+                <td colspan="6">{{ __('No URL configured yet.', 'urlwidget') }}</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -49,14 +54,27 @@
         <div class="col-md-3">
             {{ fields.textField('name', '', __('Name'), {no_label: false}) }}
         </div>
+        <div class="col-md-5">
+            {{ fields.textField('url', '', __('Data URL (HTTP GET)', 'urlwidget'), {no_label: false, placeholder: 'https://...'}) }}
+        </div>
         <div class="col-md-4">
-            {{ fields.textField('url', '', __('URL'), {no_label: false, placeholder: 'https://...'}) }}
+            {{ fields.textField('value_path', '', __('JSON path to the value', 'urlwidget'), {no_label: false, placeholder: 'data.rows.0.0'}) }}
+        </div>
+
+        <div class="col-md-2">
+            {{ fields.textField('value_prefix', '', __('Prefix', 'urlwidget'), {no_label: false}) }}
         </div>
         <div class="col-md-2">
-            {{ fields.numberField('natural_width', 1200, __('Content width (px)', 'urlwidget'), {no_label: false}) }}
+            {{ fields.textField('value_suffix', '', __('Suffix', 'urlwidget'), {no_label: false}) }}
         </div>
         <div class="col-md-2">
-            {{ fields.numberField('natural_height', 800, __('Content height (px)', 'urlwidget'), {no_label: false}) }}
+            {{ fields.numberField('cache_ttl', 300, __('Cache (seconds)', 'urlwidget'), {no_label: false}) }}
+        </div>
+        <div class="col-md-3 d-flex align-items-end">
+            <label class="form-check">
+                <input type="checkbox" class="form-check-input" name="verify_ssl" value="1" checked>
+                <span class="form-check-label">{{ __('Verify SSL certificate', 'urlwidget') }}</span>
+            </label>
         </div>
         <div class="col-md-1 d-flex align-items-end">
             <button type="submit" name="add" value="1" class="btn btn-primary">
@@ -65,11 +83,13 @@
         </div>
     </form>
     <p class="text-muted mt-2">
-        {{ __('"Content width/height" is the real, natural size of the embedded page (e.g. your Metabase dashboard\'s actual layout size). The widget is rendered at that size then scaled down automatically to fit the card, so nothing gets cropped.', 'urlwidget') }}
+        {{ __('The Data URL is called from the GLPI server (not the browser). Its response can be plain text or JSON.', 'urlwidget') }}
     </p>
     <p class="text-muted mt-2">
-        {{ __('Once added, the URL becomes available as a dashboard card named after it. Add it from any dashboard\'s "Add widget" panel, under the "Iframe / URL" widget type.', 'urlwidget') }}
+        {{ __('For a Metabase public question, use the JSON API endpoint (/api/public/card/<uuid>/query), not the public HTML page \u2014 it returns the result directly as data, e.g. path "data.rows.0.0" for a single-value question.', 'urlwidget') }}
+    </p>
+    <p class="text-muted mt-2">
+        {{ __('Once added, the URL becomes available as a dashboard card named after it, rendered like GLPI\'s native "big number" cards.', 'urlwidget') }}
     </p>
 </div>
 {% endif %}
-

@@ -4,7 +4,7 @@ use Glpi\Plugin\Hooks;
 use GlpiPlugin\Urlwidget\Dashboard;
 use GlpiPlugin\Urlwidget\Config as UrlwidgetConfig;
 
-define('PLUGIN_URLWIDGET_VERSION', '1.1.0');
+define('PLUGIN_URLWIDGET_VERSION', '1.1.1');
 
 // Minimal GLPI version, inclusive
 define('PLUGIN_URLWIDGET_MIN_GLPI_VERSION', '10.0.0');
@@ -17,10 +17,9 @@ function plugin_init_urlwidget()
 
     $PLUGIN_HOOKS['csrf_compliant']['urlwidget'] = true;
 
-    // Declare new dashboard widget type (the iframe renderer)
-    $PLUGIN_HOOKS[Hooks::DASHBOARD_TYPES]['urlwidget'] = 'plugin_urlwidget_dashboard_types';
-
-    // Declare new dashboard cards (one per configured URL)
+    // Declare new dashboard cards (one per configured URL). Each card uses
+    // GLPI's native "bigNumber" widget type, so no custom widget type/
+    // renderer needs to be declared here.
     $PLUGIN_HOOKS[Hooks::DASHBOARD_CARDS]['urlwidget'] = 'plugin_urlwidget_dashboard_cards';
 
     if (Plugin::isPluginActive('urlwidget')) {
@@ -37,11 +36,6 @@ function plugin_init_urlwidget()
  * pattern used by official GLPI plugins and is guaranteed to be invoked
  * correctly by the dashboard hook system.
  */
-function plugin_urlwidget_dashboard_types($types = [])
-{
-    return Dashboard::getTypes($types);
-}
-
 function plugin_urlwidget_dashboard_cards($cards = [])
 {
     return Dashboard::getCards($cards);
